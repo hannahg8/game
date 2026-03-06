@@ -60,6 +60,9 @@ export default function App() {
   useEffect(() => {
     async function init() {
       const saved = await loadGame();
+       if (saved?.phase === "playing") {
+        saved.turns = { nyc: null, ams: null };
+          }
       if (saved) {
         setGame(saved);
         // If we have a saved role and game is in progress, go to the right screen
@@ -228,8 +231,8 @@ export default function App() {
     const partner = myRole === "nyc" ? "ams" : "nyc";
 
     const bothDone =
-      newTurns.nyc !== null &&
-      newTurns.ams !== null;
+      newTurns.nyc?.answer &&
+      newTurns.ams?.answer;
 
     const nextState = {
       ...current,
