@@ -1,0 +1,85 @@
+/* ─────────────────────────────────────────────
+   GLOBAL CSS
+   Animations, form resets, and utilities
+   ───────────────────────────────────────────── */
+
+/* Animations */
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+
+@keyframes pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.12); }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes sparkle {
+  0% { opacity: 1; transform: scale(0) rotate(0deg); }
+  50% { opacity: 1; transform: scale(1.2) rotate(180deg); }
+  100% { opacity: 0; transform: scale(0.4) rotate(360deg); }
+}
+
+/* Form resets */
+input:focus,
+textarea:focus {
+  border-color: #ff4d6d !important;
+  outline: none;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #333;
+}
+
+/* Range slider */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  width: 100%;
+}
+
+input[type="range"]::-webkit-slider-track {
+  height: 6px;
+  background: #1a1a2e;
+  border: 1px solid #2a2a4a;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 20px;
+  height: 20px;
+  background: #ff4d6d;
+  border: 2px solid #ff8fa8;
+  margin-top: -8px;
+  cursor: pointer;
+}
+
+/* Firefox range */
+input[type="range"]::-moz-range-track {
+  height: 6px;
+  background: #1a1a2e;
+  border: 1px solid #2a2a4a;
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  background: #ff4d6d;
+  border: 2px solid #ff8fa8;
+  cursor: pointer;
+  border-radius: 0;
+}
+
+/* Scrollbar */
+* {
+  box-sizing: border-box;
+  scrollbar-width: thin;
+  scrollbar-color: #2a2a4a transparent;
+}
