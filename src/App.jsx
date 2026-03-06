@@ -18,8 +18,18 @@ import "./global.css";
 // ─────────────────────────────────────────────
 
 export default function App() {
-  // Which player am I? Chosen in the lobby.
-  const [myRole, setMyRole] = useState(null);         // "nyc" | "ams" | null
+  // Which player am I? Persisted in localStorage so it survives refresh.
+  const [myRole, setMyRoleState] = useState(() => {
+    try { return localStorage.getItem("allin-my-role"); } catch { return null; }
+  });
+
+  function setMyRole(role) {
+    setMyRoleState(role);
+    try {
+      if (role) localStorage.setItem("allin-my-role", role);
+      else localStorage.removeItem("allin-my-role");
+    } catch {}
+  }
 
   // The shared game state (synced via Firebase)
   const [game, setGame] = useState(null);
@@ -47,7 +57,17 @@ export default function App() {
   useEffect(() => {
     async function init() {
       const saved = await loadGame();
-      if (saved) setGame(saved);
+      if (saved) {
+        setGame(saved);
+        // If we have a saved role and game is in progress, go to the right screen
+        if (myRole && saved.players?.[myRole]?.joined) {
+          if (saved.phase === "playing" && saved.round > 0) setScreen("play");
+          else if (saved.phase === "showdown") { setScreen("showdown"); setRevealStep(0); }
+          else if (saved.phase === "results") setScreen("play");
+          else if (saved.phase === "gameover") setScreen("play");
+          else if (saved.phase === "lobby") setScreen("lobby");
+        }
+      }
       setLoaded(true);
     }
     init();
@@ -61,10 +81,19 @@ export default function App() {
     const unsubscribe = onGameChange((updatedGame) => {
       setGame(updatedGame);
 
-      // Auto-navigate to showdown when both turns are in
-      if (updatedGame.phase === "showdown" && myRole) {
+      // Auto-navigate based on game phase changes
+      if (!myRole) return;
+
+      if (updatedGame.phase === "showdown") {
         setScreen("showdown");
         setRevealStep(0);
+      } else if (updatedGame.phase === "playing" && updatedGame.round > 0) {
+        // Game has started (both joined, or new round) — go to play screen
+        setScreen((prev) => prev === "lobby" || prev === "title" ? "play" : prev);
+      } else if (updatedGame.phase === "results") {
+        setScreen("play"); // results screen is rendered inside the play route
+      } else if (updatedGame.phase === "gameover") {
+        setScreen("play");
       }
     });
 
@@ -75,12 +104,13 @@ export default function App() {
   // ── Helpers ──
 
   const updateGame = useCallback(async (changes) => {
-    setGame((prev) => {
-      const next = { ...prev, ...changes };
-      saveGame(next); // Write to Firebase
-      return next;
-    });
-  }, []);
+    // Read fresh state to avoid overwriting partner's changes
+    const freshGame = await loadGame();
+    const base = freshGame || game;
+    const next = { ...base, ...changes };
+    setGame(next);
+    await saveGame(next);
+  }, [game]);
 
   function resetForm() {
     setForm({ answer: "", guess: "", wager: 10, moveType: "bet", sideBet: null, sabotage: null });
@@ -104,22 +134,26 @@ export default function App() {
 
   /** Player picks a slot (NYC or AMS) and enters their name */
   async function joinGame(role, name) {
-    let currentGame = game || createFreshGame();
+    // CRITICAL: Read the LATEST state from Firebase, not stale local state.
+    // Without this, Player 2 would overwrite Player 1's join.
+    const freshGame = await loadGame() || createFreshGame();
 
     const updatedPlayers = {
-      ...currentGame.players,
-      [role]: { ...currentGame.players[role], name, joined: true },
+      ...freshGame.players,
+      [role]: { ...freshGame.players[role], name, joined: true },
     };
 
     const otherRole = role === "nyc" ? "ams" : "nyc";
     const bothJoined = updatedPlayers[otherRole].joined;
 
     const newState = {
-      ...currentGame,
+      ...freshGame,
       players: updatedPlayers,
       phase: bothJoined ? "playing" : "lobby",
-      round: bothJoined ? 1 : 0,
-      turns: { nyc: null, ams: null },
+      round: bothJoined ? Math.max(1, freshGame.round) : 0,
+      turns: bothJoined && freshGame.round === 0
+        ? { nyc: null, ams: null }
+        : freshGame.turns || { nyc: null, ams: null },
     };
 
     setMyRole(role);
@@ -174,6 +208,9 @@ export default function App() {
   /** Calculate chips after showdown reveals */
   async function resolveShowdown() {
     const { turns, players, round, history } = game;
+
+    // Safety check — both turns must exist
+    if (!turns?.nyc || !turns?.ams) return;
 
     let nycChips = players.nyc.chips;
     let amsChips = players.ams.chips;
