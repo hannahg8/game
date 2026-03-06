@@ -276,8 +276,7 @@ export default function App() {
       await writeFullState(nextState);
       triggerSparkles();
       setScreen("play");
-      return;
-    }
+        }
 
     let nycChips = players.nyc.chips;
     let amsChips = players.ams.chips;
