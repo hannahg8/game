@@ -8,14 +8,13 @@ import { initializeApp } from "firebase/app";
 import { getDatabase, ref, set, get, onValue } from "firebase/database";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyBUyp4RpKLK6aOXwB8FncS2on-p-oQvoRc",
-  authDomain: "game-e90b7.firebaseapp.com",
-  databaseURL: "https://game-e90b7-default-rtdb.firebaseio.com",
-  projectId: "game-e90b7",
-  storageBucket: "game-e90b7.firebasestorage.app",
-  messagingSenderId: "80723378311",
-  appId: "1:80723378311:web:399dd72bedc50804ae7822",
-  measurementId: "G-BX8PHXM05C"
+  apiKey:            "PASTE_YOUR_API_KEY_HERE",
+  authDomain:        "PASTE_YOUR_AUTH_DOMAIN_HERE",
+  databaseURL:       "PASTE_YOUR_DATABASE_URL_HERE",
+  projectId:         "PASTE_YOUR_PROJECT_ID_HERE",
+  storageBucket:     "PASTE_YOUR_STORAGE_BUCKET_HERE",
+  messagingSenderId: "PASTE_YOUR_SENDER_ID_HERE",
+  appId:             "PASTE_YOUR_APP_ID_HERE",
 };
 
 // Initialize Firebase

@@ -378,6 +378,7 @@ export default function App() {
         myRole={myRole}
         onJoin={joinGame}
         onBack={() => setScreen("title")}
+        onReset={resetGame}
       />
     );
   }
@@ -774,13 +775,32 @@ export default function App() {
 // SUB-COMPONENTS
 // ─────────────────────────────────────────────
 
-function LobbyScreen({ game, myRole, onJoin, onBack }) {
+function LobbyScreen({ game, myRole, onJoin, onBack, onReset }) {
   const [name, setName] = useState("");
   const [selectedSlot, setSelectedSlot] = useState(null);
 
   const currentGame = game || createFreshGame();
   const nycTaken = currentGame.players.nyc.joined;
   const amsTaken = currentGame.players.ams.joined;
+  const bothTaken = nycTaken && amsTaken;
+
+  // If both slots are taken, allow "rejoin" — click your name to reclaim your role
+  function handleSlotClick(role) {
+    const taken = role === "nyc" ? nycTaken : amsTaken;
+    if (!taken) {
+      // Open slot — select it normally
+      setSelectedSlot(role);
+    } else if (bothTaken) {
+      // Both taken — allow rejoin by clicking your own slot
+      setSelectedSlot(role);
+      setName(currentGame.players[role].name);
+    }
+  }
+
+  function handleJoin() {
+    if (!selectedSlot || !name.trim()) return;
+    onJoin(selectedSlot, name.trim());
+  }
 
   return (
     <div style={S.screen}>
@@ -788,18 +808,20 @@ function LobbyScreen({ game, myRole, onJoin, onBack }) {
       <div style={{ ...S.center, maxWidth: 360, width: "100%", padding: "0 16px" }}>
         <h2 style={{ ...S.pixel, fontSize: 16, color: "#ff4d6d", marginBottom: 8 }}>PICK YOUR SIDE</h2>
         <p style={{ ...S.pixel, fontSize: 8, color: "#666", marginBottom: 24, lineHeight: 2, textAlign: "center" }}>
-          One player picks NYC, the other picks AMS.<br />Share the URL with your partner!
+          {bothTaken
+            ? "Both players joined! Tap your name to rejoin."
+            : <>One player picks NYC, the other picks AMS.<br />Share the URL with your partner!</>}
         </p>
 
-        {/* NYC */}
+        {/* NYC slot */}
         <button
           style={{ ...S.lobbySlot,
-            borderColor: selectedSlot === "nyc" ? "#ffb7c5" : nycTaken ? "#1a3a1a" : "#1a1a2e",
-            opacity: nycTaken ? 0.5 : 1,
+            borderColor: selectedSlot === "nyc" ? "#ffb7c5" : "#1a1a2e",
+            opacity: nycTaken && !bothTaken ? 0.5 : 1,
             background: selectedSlot === "nyc" ? "rgba(255,183,197,0.08)" : "transparent",
           }}
-          onClick={() => !nycTaken && setSelectedSlot("nyc")}
-          disabled={nycTaken}
+          onClick={() => handleSlotClick("nyc")}
+          disabled={nycTaken && !bothTaken}
         >
           <PixelBunny size={52} />
           <div style={{ marginLeft: 16, flex: 1 }}>
@@ -808,19 +830,22 @@ function LobbyScreen({ game, myRole, onJoin, onBack }) {
               {nycTaken ? `✓ ${currentGame.players.nyc.name} joined` : "Open slot"}
             </span>
           </div>
+          {selectedSlot === "nyc" && bothTaken && (
+            <span style={{ ...S.pixel, fontSize: 7, color: "#ffb7c5" }}>← That's me!</span>
+          )}
         </button>
 
         <div style={{ margin: "12px 0", textAlign: "center" }}><PixelHeart size={20} /></div>
 
-        {/* AMS */}
+        {/* AMS slot */}
         <button
           style={{ ...S.lobbySlot,
-            borderColor: selectedSlot === "ams" ? "#a8e6cf" : amsTaken ? "#1a3a1a" : "#1a1a2e",
-            opacity: amsTaken ? 0.5 : 1,
+            borderColor: selectedSlot === "ams" ? "#a8e6cf" : "#1a1a2e",
+            opacity: amsTaken && !bothTaken ? 0.5 : 1,
             background: selectedSlot === "ams" ? "rgba(168,230,207,0.08)" : "transparent",
           }}
-          onClick={() => !amsTaken && setSelectedSlot("ams")}
-          disabled={amsTaken}
+          onClick={() => handleSlotClick("ams")}
+          disabled={amsTaken && !bothTaken}
         >
           <PixelCat size={52} />
           <div style={{ marginLeft: 16, flex: 1 }}>
@@ -829,9 +854,13 @@ function LobbyScreen({ game, myRole, onJoin, onBack }) {
               {amsTaken ? `✓ ${currentGame.players.ams.name} joined` : "Open slot"}
             </span>
           </div>
+          {selectedSlot === "ams" && bothTaken && (
+            <span style={{ ...S.pixel, fontSize: 7, color: "#a8e6cf" }}>← That's me!</span>
+          )}
         </button>
 
-        {selectedSlot && (
+        {/* Name input — show for new joins, pre-fill for rejoins */}
+        {selectedSlot && !bothTaken && (
           <div style={{ marginTop: 20, width: "100%", animation: "slideUp 0.3s ease-out" }}>
             <label style={{ ...S.pixel, fontSize: 9, color: "#fff", marginBottom: 8 }}>YOUR NAME:</label>
             <input style={S.textInput} value={name} onChange={(e) => setName(e.target.value)}
@@ -839,22 +868,36 @@ function LobbyScreen({ game, myRole, onJoin, onBack }) {
           </div>
         )}
 
+        {/* Action buttons */}
         <div style={{ display: "flex", gap: 12, marginTop: 20, width: "100%" }}>
           <button style={S.ghostButton} onClick={onBack}>←</button>
+
           {selectedSlot ? (
             <button
-              style={{ ...S.primaryButton, flex: 1, opacity: name.trim() ? 1 : 0.4 }}
-              onClick={() => name.trim() && onJoin(selectedSlot, name.trim())}
-              disabled={!name.trim()}
+              style={{ ...S.primaryButton, flex: 1, opacity: (bothTaken || name.trim()) ? 1 : 0.4 }}
+              onClick={handleJoin}
+              disabled={!bothTaken && !name.trim()}
             >
-              JOIN AS {selectedSlot.toUpperCase()} ♠
+              {bothTaken ? `REJOIN AS ${selectedSlot.toUpperCase()} ♠` : `JOIN AS ${selectedSlot.toUpperCase()} ♠`}
             </button>
           ) : (
-            <button style={{ ...S.darkButton, flex: 1 }} onClick={onBack}>
-              Pick a side above!
+            <button style={{ ...S.darkButton, flex: 1 }} disabled>
+              Tap your name above!
             </button>
           )}
         </div>
+
+        {/* Reset option */}
+        <button
+          style={{ ...S.ghostButton, marginTop: 16, width: "100%", fontSize: 8, color: "#444" }}
+          onClick={() => {
+            if (window.confirm("Reset the whole game? Both players will need to rejoin.")) {
+              onReset();
+            }
+          }}
+        >
+          🔄 RESET GAME (start over)
+        </button>
 
         {myRole && !(nycTaken && amsTaken) && (
           <p style={{ ...S.pixel, fontSize: 8, color: "#666", marginTop: 16, lineHeight: 2, textAlign: "center" }}>
