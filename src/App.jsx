@@ -22,6 +22,7 @@ export default function App() {
   const [myRole, setMyRoleState] = useState(() => {
     try { return localStorage.getItem("allin-my-role"); } catch { return null; }
   });
+}
 
   function setMyRole(role) {
     setMyRoleState(role);
@@ -40,6 +41,8 @@ export default function App() {
   const [showRules, setShowRules] = useState(false);
   const [revealStep, setRevealStep] = useState(0);
   const [sparkles, setSparkles] = useState([]);
+  const [lastSync, setLastSync] = useState(Date.now());
+  const [dots, setDots] = useState("");
 
   // Form data for current turn (local until submitted)
   const [form, setForm] = useState({
@@ -73,6 +76,28 @@ export default function App() {
     init();
   }, []);
 
+  useEffect(() => {
+
+  // animate the ...
+  const dotInterval = setInterval(() => {
+    setDots(d => (d.length >= 3 ? "" : d + "."));
+  }, 500);
+
+  // periodic Firebase refresh (backup if realtime listener hiccups)
+  const syncInterval = setInterval(async () => {
+    const latest = await loadGame();
+    if (latest) {
+      setGame(latest);
+      setLastSync(Date.now());
+    }
+  }, 4000);
+
+  return () => {
+    clearInterval(dotInterval);
+    clearInterval(syncInterval);
+  };
+
+}, []);
 
   // ── Real-time sync with Firebase ──
   // Whenever the other player writes to Firebase, we see it instantly
@@ -289,12 +314,9 @@ export default function App() {
       turns: { nyc: null, ams: null },
     };
 
-    await writeFullState(nextState);
-    triggerSparkles();
-  }
-
-    triggerSparkles();
-  }
+await writeFullState(nextState);
+triggerSparkles();
+}
 
   /** Move to the next round */
   async function nextRound() {
@@ -649,10 +671,14 @@ export default function App() {
             {partnerRole === "ams" ? <PixelCat size={64} /> : <PixelBunny size={64} />}
           </div>
           <h2 style={{ ...S.pixel, fontSize: 14, color: "#fff", marginTop: 16, marginBottom: 8 }}>
-            Waiting for {partnerPlayer?.name || "partner"}...
-          </h2>
+            Waiting for {partnerPlayer?.name || "partner"}{dots}
+            </h2>
           <p style={{ ...S.pixel, fontSize: 9, color: "#666", lineHeight: 2, textAlign: "center", maxWidth: 280 }}>
             Your turn is locked in! They'll see it as soon as they open the game.
+          </p>
+
+          <p style={{ ...S.pixel, fontSize: 7, color: "#333", marginTop: 12 }}>
+            last sync {Math.floor((Date.now() - lastSync) / 1000)}s ago
           </p>
           <p style={{ ...S.pixel, fontSize: 8, color: "#333", marginTop: 16 }}>
             ✓ Live syncing via Firebase
@@ -1100,12 +1126,29 @@ function RulesModal({ onClose }) {
 }
 
 function SparkleOverlay({ sparkles }) {
-  return sparkles.map((s) => (
-    <div key={s.id} style={{
-      position: "fixed", top: `${s.y}%`, left: `${s.x}%`, zIndex: 50, pointerEvents: "none",
-      animation: `sparkle 1s ease-out forwards`, animationDelay: `${s.delay}s`,
-    }}>
-      <PixelHeart size={10} color={["#ff4d6d", "#ffd93d", "#c4b5fd"][s.id % 3]} />
-    </div>
-  ));
+  return (
+    <>
+      {sparkles.map((s) => (
+        <div
+          key={s.id}
+          style={{
+            position: "fixed",
+            top: `${s.y}%`,
+            left: `${s.x}%`,
+            zIndex: 50,
+            pointerEvents: "none",
+            animation: "sparkle 1s ease-out forwards",
+            animationDelay: `${s.delay}s`,
+          }}
+        >
+          <PixelHeart
+            size={10}
+            color={["#ff4d6d", "#ffd93d", "#c4b5fd"][s.id % 3]}
+          />
+        </div>
+      ))}
+    </>
+  );
 }
+
+
