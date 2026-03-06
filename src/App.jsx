@@ -231,15 +231,15 @@ export default function App() {
     const partner = myRole === "nyc" ? "ams" : "nyc";
 
     const bothDone =
-      newTurns.nyc?.answer &&
-      newTurns.ams?.answer;
+      Boolean(newTurns.nyc?.answer) &&
+      Boolean(newTurns.ams?.answer);
 
     const nextState = {
       ...current,
       turns: newTurns,
       sabotageCards: newSabotageCards,
       doubleActive: form.sabotage === "double" || current.doubleActive,
-      phase: bothDone ? "showdown" : "playing",
+      phase: bothDone ? "showdown" : current.phase,
     };
 
     await writeFullState(nextState);
