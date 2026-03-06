@@ -226,7 +226,10 @@ export default function App() {
     const currentTurns = current.turns || { nyc: null, ams: null };
     const newTurns = { ...currentTurns, [myRole]: turnData };
     const partner = myRole === "nyc" ? "ams" : "nyc";
-    const bothDone = newTurns[partner] !== null;
+
+    const bothDone =
+      newTurns.nyc !== null &&
+      newTurns.ams !== null;
 
     const nextState = {
       ...current,
