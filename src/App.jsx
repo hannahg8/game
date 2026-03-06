@@ -104,13 +104,18 @@ export default function App() {
   // ── Helpers ──
 
   const updateGame = useCallback(async (changes) => {
-    // Read fresh state to avoid overwriting partner's changes
-    const freshGame = await loadGame();
-    const base = freshGame || game;
-    const next = { ...base, ...changes };
+    // Build the new state from local game + changes
+    // Then write the FULL state to Firebase (no merge ambiguity)
+    const next = { ...game, ...changes };
     setGame(next);
     await saveGame(next);
   }, [game]);
+
+  /** Write a complete game state directly — use when you need full control */
+  async function writeFullState(fullState) {
+    setGame(fullState);
+    await saveGame(fullState);
+  }
 
   function resetForm() {
     setForm({ answer: "", guess: "", wager: 10, moveType: "bet", sideBet: null, sabotage: null });
@@ -151,10 +156,14 @@ export default function App() {
       players: updatedPlayers,
       phase: bothJoined ? "playing" : "lobby",
       round: bothJoined ? Math.max(1, freshGame.round) : 0,
-      turns: bothJoined && freshGame.round === 0
-        ? { nyc: null, ams: null }
-        : freshGame.turns || { nyc: null, ams: null },
+      // Always clear turns on rejoin to prevent stale showdown data
+      turns: { nyc: null, ams: null },
     };
+
+    // If game was stuck in showdown, reset it to playing
+    if (freshGame.phase === "showdown" && bothJoined) {
+      newState.phase = "playing";
+    }
 
     setMyRole(role);
     setGame(newState);
@@ -166,8 +175,11 @@ export default function App() {
   async function submitTurn() {
     if (!form.answer.trim() || !form.guess.trim()) return;
 
-    const wager = Math.min(form.wager, game.players[myRole].chips);
-    const isDoubled = game.doubleActive || form.sabotage === "double";
+    // Read fresh state so we can see if partner already submitted
+    const current = await loadGame() || game;
+
+    const wager = Math.min(form.wager, current.players[myRole].chips);
+    const isDoubled = current.doubleActive || form.sabotage === "double";
 
     const turnData = {
       answer: form.answer,
@@ -179,24 +191,27 @@ export default function App() {
     };
 
     // Remove used sabotage card
-    let newSabotageCards = { ...game.sabotageCards };
-    if (form.sabotage) {
+    let newSabotageCards = { ...current.sabotageCards };
+    if (form.sabotage && newSabotageCards[myRole]) {
       newSabotageCards[myRole] = newSabotageCards[myRole].filter(
         (s) => s !== form.sabotage
       );
     }
 
-    const newTurns = { ...game.turns, [myRole]: turnData };
+    const currentTurns = current.turns || { nyc: null, ams: null };
+    const newTurns = { ...currentTurns, [myRole]: turnData };
     const partner = myRole === "nyc" ? "ams" : "nyc";
     const bothDone = newTurns[partner] !== null;
 
-    await updateGame({
+    const nextState = {
+      ...current,
       turns: newTurns,
       sabotageCards: newSabotageCards,
-      doubleActive: form.sabotage === "double" || game.doubleActive,
+      doubleActive: form.sabotage === "double" || current.doubleActive,
       phase: bothDone ? "showdown" : "playing",
-    });
+    };
 
+    await writeFullState(nextState);
     resetForm();
 
     if (bothDone) {
@@ -207,31 +222,51 @@ export default function App() {
 
   /** Calculate chips after showdown reveals */
   async function resolveShowdown() {
-    const { turns, players, round, history } = game;
+    // Read the absolute latest from Firebase
+    const current = await loadGame() || game;
+    const { turns, players, round } = current;
+    const history = current.history || [];
 
-    // Safety check — both turns must exist
-    if (!turns?.nyc || !turns?.ams) return;
+    // If either turn is missing or empty, skip this round
+    const nycValid = turns?.nyc?.answer;
+    const amsValid = turns?.ams?.answer;
+
+    if (!nycValid || !amsValid) {
+      const skipRecord = {
+        round,
+        question: QUESTIONS[round - 1],
+        nyc: turns?.nyc || { answer: "(skipped)", guess: "", wager: 0, moveType: "bet", sideBet: null, sabotage: null },
+        ams: turns?.ams || { answer: "(skipped)", guess: "", wager: 0, moveType: "bet", sideBet: null, sabotage: null },
+        chipsAfter: { nyc: players.nyc.chips, ams: players.ams.chips },
+        skipped: true,
+      };
+
+      const nextState = {
+        ...current,
+        history: [...history, skipRecord],
+        phase: round >= 30 ? "gameover" : "results",
+        turns: { nyc: null, ams: null },
+      };
+
+      await writeFullState(nextState);
+      triggerSparkles();
+      setScreen("play");
+      return;
+    }
 
     let nycChips = players.nyc.chips;
     let amsChips = players.ams.chips;
 
-    // Deduct wagers
     nycChips -= turns.nyc.wager;
     amsChips -= turns.ams.wager;
-
-    // Base reward: wager back + 5 for participating
     nycChips += turns.nyc.wager + 5;
     amsChips += turns.ams.wager + 5;
 
-    // Steal bonus/penalty
     if (turns.nyc.moveType === "steal") { nycChips += 10; amsChips -= 5; }
     if (turns.ams.moveType === "steal") { amsChips += 10; nycChips -= 5; }
-
-    // Side bet bonus
     if (turns.nyc.sideBet) nycChips += 3;
     if (turns.ams.sideBet) amsChips += 3;
 
-    // Can't go negative
     nycChips = Math.max(0, nycChips);
     amsChips = Math.max(0, amsChips);
 
@@ -243,26 +278,35 @@ export default function App() {
       chipsAfter: { nyc: nycChips, ams: amsChips },
     };
 
-    await updateGame({
+    const nextState = {
+      ...current,
       players: {
         nyc: { ...players.nyc, chips: nycChips },
         ams: { ...players.ams, chips: amsChips },
       },
       history: [...history, roundRecord],
       phase: round >= 30 ? "gameover" : "results",
-    });
+      turns: { nyc: null, ams: null },
+    };
+
+    await writeFullState(nextState);
+    triggerSparkles();
+  }
 
     triggerSparkles();
   }
 
   /** Move to the next round */
   async function nextRound() {
-    await updateGame({
-      round: game.round + 1,
+    const current = await loadGame() || game;
+    const nextState = {
+      ...current,
+      round: current.round + 1,
       phase: "playing",
       turns: { nyc: null, ams: null },
       doubleActive: false,
-    });
+    };
+    await writeFullState(nextState);
     resetForm();
     setScreen("play");
   }
@@ -447,6 +491,16 @@ export default function App() {
               : revealStep < 5 ? "SHOW THE BETS ♠"
               : "SETTLE THE SCORE ♠"}
           </button>
+
+          {/* Emergency skip if showdown data is corrupted */}
+          {(!turns?.nyc?.answer || !turns?.ams?.answer) && (
+            <button
+              style={{ ...S.ghostButton, marginTop: 12, width: "100%", fontSize: 8 }}
+              onClick={resolveShowdown}
+            >
+              ⚠ Missing answers — skip this round
+            </button>
+          )}
         </div>
       </div>
     );
