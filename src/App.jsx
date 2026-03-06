@@ -69,7 +69,9 @@ export default function App() {
     const unsub = onGameChange((g) => {
       setGame(g);
       if (!myRole) return;
-      if (g.phase === "showdown") { setScreen("showdown"); setRevealStep(0); }
+      // Only go to showdown if both turns actually have answers
+      const bothAnswered = !!(g.turns?.nyc?.answer) && !!(g.turns?.ams?.answer);
+      if (g.phase === "showdown" && bothAnswered) { setScreen("showdown"); setRevealStep(0); }
       else if (g.phase === "playing" && g.round > 0) {
         setScreen(prev => (prev === "lobby" || prev === "title") ? "play" : prev);
       }
@@ -117,19 +119,21 @@ export default function App() {
     if (form.sabotage && sabs[myRole]) {
       sabs[myRole] = sabs[myRole].filter(s => s !== form.sabotage);
     }
-    const turns = { ...(current.turns || { nyc: null, ams: null }), [myRole]: td };
+    const currentTurns = current.turns || {};
+    const newTurns = { ...currentTurns, [myRole]: td };
     const partner = myRole === "nyc" ? "ams" : "nyc";
-    const bothDone = turns[partner] !== null;
+    // Firebase deletes null values, so partner's turn will be undefined (not null) if they haven't played
+    const partnerHasPlayed = !!(newTurns[partner] && newTurns[partner].answer);
     const next = {
       ...current,
-      turns, sabotageCards: sabs,
+      turns: newTurns, sabotageCards: sabs,
       doubleActive: form.sabotage === "double" || current.doubleActive,
-      phase: bothDone ? "showdown" : "playing",
+      phase: partnerHasPlayed ? "showdown" : "playing",
     };
     setGame(next);
     await saveGame(next);
     resetForm();
-    if (bothDone) { setScreen("showdown"); setRevealStep(0); }
+    if (partnerHasPlayed) { setScreen("showdown"); setRevealStep(0); }
   }
 
   async function resolveShowdown() {
@@ -194,8 +198,8 @@ export default function App() {
   const me = myRole ? game?.players?.[myRole] : null;
   const partnerRole = myRole === "nyc" ? "ams" : "nyc";
   const partner = myRole ? game?.players?.[partnerRole] : null;
-  const myDone = game?.turns?.[myRole] !== null && game?.turns?.[myRole] !== undefined;
-  const partnerDone = game?.turns?.[partnerRole] !== null && game?.turns?.[partnerRole] !== undefined;
+  const myDone = !!(game?.turns?.[myRole]?.answer);
+  const partnerDone = !!(game?.turns?.[partnerRole]?.answer);
 
 
   // ═══════════════════════════════════
